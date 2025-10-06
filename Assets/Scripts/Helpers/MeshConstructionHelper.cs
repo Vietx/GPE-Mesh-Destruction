@@ -30,7 +30,7 @@ class MeshContructionHelper
         mesh.uv = _uvs.ToArray();
         return mesh;
     }
-    
+
     public void AddMeshSection(VertexData vertexA, VertexData vertexB, VertexData vertexC)
     {
         int indexA = TryAddVertex(vertexA);
