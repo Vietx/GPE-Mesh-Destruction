@@ -105,7 +105,6 @@ public static class MeshSlicer
         if (Mathf.Abs(dot) > Single.Epsilon)
         {
             Vector3 fromOrigin = from - planeOrigin;
-            //math that i don't really understand
             //interpolation factor that tells you how far between from and to, the intersection is
             float fac = -Vector3.Dot(normal, fromOrigin) / dot;
             translation = translation * fac;
