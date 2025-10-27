@@ -563,7 +563,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!64 &1266268653
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -671,7 +671,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   Target: {fileID: 1266268652}
   PlaneObjects: []
-  amountOfPoints: 3
+  amountOfPoints: 6
   ShardMaterial: {fileID: 2100000, guid: 7461cad18f7ef214e8b1ccca192e62cf, type: 2}
   DestroyOriginalAfterCut: 1
   AddMeshCollider: 1
@@ -698,7 +698,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!64 &1619358222
 MeshCollider:
   m_ObjectHideFlags: 0

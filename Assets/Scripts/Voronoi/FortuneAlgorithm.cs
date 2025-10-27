@@ -1,10 +1,5 @@
-using System;
 using System.Collections.Generic;
-using System.Globalization;
-using Unity.Collections;
-using Unity.VisualScripting;
 using UnityEngine;
-using UnityEngine.AI;
 
 public class FortuneAlgorithm
 {

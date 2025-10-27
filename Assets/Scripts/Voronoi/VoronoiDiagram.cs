@@ -68,6 +68,11 @@ public class VoronoiDiagram
         return _faces[i];
     }
 
+    public List<Face> GetAllFaces()
+    {
+        return _faces;
+    }
+
     public IEnumerable<Vertex> GetVertices()
     {
         return _vertices;
@@ -86,7 +91,10 @@ public class VoronoiDiagram
 
         foreach (var site in _sites)
         {
+            if (site.Face == null || site.Face.OuterComponent == null) continue;
+
             var halfEdge = site.Face.OuterComponent;
+
             if (halfEdge == null) continue;
 
             bool inside = box.Contains(halfEdge.Origin.Point);
@@ -117,7 +125,7 @@ public class VoronoiDiagram
                     continue;
                 }
 
-                var intersections = new Box.Intersection[2];
+                var intersections = new Box.Intersection[4];
                 int nbIntersections = box.GetIntersections(
                     halfEdge.Origin.Point, halfEdge.Destination.Point, intersections);
 
@@ -261,6 +269,9 @@ public class VoronoiDiagram
 
     public void Link(Box box, HalfEdge start, Box.Side startSide, HalfEdge end, Box.Side endSide)
     {
+        if (start == null || end == null) return;
+        if (start.Destination == null || end.Origin == null) return;
+
         var halfEdge = start;
         int side = (int)startSide;
 
@@ -290,13 +301,36 @@ public class VoronoiDiagram
 
     public void RemoveVertex(Vertex v)
     {
-        if (v?.Node != null)
-            _vertices.Remove(v.Node);
+        if (v == null) return;
+        var node = v.Node;
+
+        if (node == null) return;
+
+        if (node.List != _vertices) { v.Node = null; return; }
+
+        _vertices.Remove(node);
+        v.Node = null;
     }
 
     public void RemoveHalfEdge(HalfEdge he)
     {
-        if (he?.Node != null)
-            _halfEdges.Remove(he.Node);
+        if (he == null) return;
+
+        var node = he.Node;
+
+        if (node == null) return;
+        if (node.List != _halfEdges)
+        {
+            he.Node = null;
+            return;
+        }
+
+        _halfEdges.Remove(node);
+        he.Node = null;
+
+        if (he.Twin != null) he.Twin.Twin = null;
+        he.Next = he.Prev = null;
+        he.Origin = he.Destination = null;
+        he.IncidentFace = null;
     }
 }
