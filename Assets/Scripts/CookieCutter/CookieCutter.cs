@@ -1,7 +1,6 @@
-
 using System.Collections.Generic;
-using Unity.VisualScripting;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class Cookiecutter : MonoBehaviour
 {
@@ -10,19 +9,21 @@ public class Cookiecutter : MonoBehaviour
 
     [Header("Setup")]
     //amount of rings to create to simulate the spiderweb effect
-    public float nrOfRings = 2;
+    public int nrOfRings = 2;
     //vertical slices to make easy glass shards
     public int nrOfCutsPerImpact = 4;
     //point of bullet impact in local space of object
     public Vector3 impactPoint = Vector3.zero;
     public Material ShardMaterial;
+    public float offset = .3f;
 
     [Header("Options")]
     public bool AddMeshCollider = true;
     public bool AddRigidbody = false;
     public bool CutWithSeperateScript = false;
     public bool DestroyOriginalAfterCut = true;
-    public bool secondCutPassTesting = false;
+    public bool randomNrOfImpacts = true;
+    public int upperRange = 5, lowerRange = 3;
 
     [Header("Physics")]
     public bool AddPhysics = false;
@@ -34,20 +35,15 @@ public class Cookiecutter : MonoBehaviour
     Camera cam;
 
     List<Plane> planeObjects = new();
-    List<Plane> radialCuttingPlanes = new();
-    Plane angledCutter;
+    List<Plane> bisectingPlanes = new();
+    private List<Vector2> seedPoints = new();
     List<GameObject> createdShards = new();
 
-    float minAreaThreshold = 0.0001f; //due to overhead of creating shards, some spawn without any area, delete these
+    float minAreaThreshold = 1e-4f; //due to overhead of creating shards, some spawn without any area, delete these
 
     void Awake()
     {
         cam = Camera.main;
-    }
-
-    void Start()
-    {
-        // GenerateCuttingPlanes(nrOfCutsPerImpact, target.transform, impactPoint);
     }
 
     void Update()
@@ -57,35 +53,36 @@ public class Cookiecutter : MonoBehaviour
             //raycast to get impact point
             ShootRayCast();
         }
+
+        if (Input.GetKeyDown(KeyCode.R))
+            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+
+
+        if (Input.GetKeyDown(KeyCode.LeftShift))
+            AddRigidbody = !AddRigidbody;
+
+
+        if (Input.GetKeyDown(KeyCode.LeftControl))
+            CutWithSeperateScript = !CutWithSeperateScript;
+
     }
-    
+
     void ShootRayCast()
     {
+        if (randomNrOfImpacts) nrOfCutsPerImpact = Random.Range(lowerRange, upperRange);
+
+        createdShards.Clear();
         Ray ray = cam.ScreenPointToRay(Input.mousePosition);
         if (Physics.Raycast(ray, out RaycastHit hit, Mathf.Infinity, glassLayerMask))
         {
-            Debug.DrawRay(ray.origin, ray.direction * hit.distance, Color.yellow, 1f);
-            Debug.Log("hit glass at: " + hit.point);
             target = hit.collider.gameObject;
             ShardMaterial = target.GetComponent<MeshRenderer>().sharedMaterial;
             impactPoint = target.transform.InverseTransformPoint(hit.point);
             GenerateCuttingPlanes(nrOfCutsPerImpact, target.transform, impactPoint);
             CreateCutsFromImpactPoint();
         }
-        else
-        { 
-            Debug.DrawRay(ray.origin, ray.direction * 1000f, Color.white, 0.5f); 
-            Debug.Log("Did not Hit"); 
-        }
     }
 
-    [ContextMenu("Do Stuff")]
-    public void DoStuff()
-    {
-        GenerateCuttingPlanes(nrOfCutsPerImpact, target.transform, impactPoint);
-    }
-    
-    [ContextMenu("Cut Mesh")]
     void CreateCutsFromImpactPoint()
     {
         if (target == null) { Debug.Log("no target set"); return; }
@@ -121,39 +118,9 @@ public class Cookiecutter : MonoBehaviour
                 Mesh[] slice = MeshSlicer.SliceMesh(m, pL, nL);
                 if (slice != null && slice.Length == 2)
                 {
-                    if (!secondCutPassTesting)
-                    {
-                        next.Add(slice[0]);
-                        next.Add(slice[1]);
-                        Destroy(m);
-                    }
-                    else
-                    {
-                        Debug.Log("second cut pass testing");
-                        GenerateRadialCuttingPlane(target.transform, impactPoint, 0.3f);
-                        Mesh[] radialSliceA = MeshSlicer.SliceMesh(slice[0], target.transform.InverseTransformPoint(angledCutter.normal * -angledCutter.distance), angledCutter.normal);
-                        Mesh[] radialSliceB = MeshSlicer.SliceMesh(slice[1], target.transform.InverseTransformPoint(angledCutter.normal * -angledCutter.distance), angledCutter.normal);
-                        if (radialSliceA != null && radialSliceA.Length == 2)
-                        {
-                            next.Add(radialSliceA[0]);
-                            next.Add(radialSliceA[1]);
-                            Destroy(slice[0]);
-                        }
-                        else
-                        {
-                            next.Add(slice[0]);
-                        }
-                        if (radialSliceB != null && radialSliceB.Length == 2)
-                        {
-                            next.Add(radialSliceB[0]);
-                            next.Add(radialSliceB[1]);
-                            Destroy(slice[1]);
-                        }
-                        else
-                        {
-                            next.Add(slice[1]);
-                        }
-                    }
+                    next.Add(slice[0]);
+                    next.Add(slice[1]);
+                    Destroy(m);
                 }
                 else
                 {
@@ -170,24 +137,123 @@ public class Cookiecutter : MonoBehaviour
         foreach (var mesh in pieces)
         {
             GameObject go = new GameObject("Shard");
-            go.transform.SetPositionAndRotation(target.transform.position, target.transform.rotation);
-            go.transform.localScale = target.transform.lossyScale;
-            go.transform.SetParent(parent, true);
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = target.transform.localPosition;
+            go.transform.localRotation = target.transform.localRotation;
+            go.transform.localScale = target.transform.localScale;
             go.layer = LayerMask.NameToLayer("Glass");
 
             MeshFilter shardMF = go.AddComponent<MeshFilter>(); shardMF.sharedMesh = mesh;
             MeshRenderer shardMR = go.AddComponent<MeshRenderer>(); shardMR.sharedMaterial = mat;
 
-            if (CutWithSeperateScript)
+            if (CheckArea(go) < minAreaThreshold)
             {
-                CrackCutter crack = go.AddComponent<CrackCutter>();
-                crack.ShardMaterial = ShardMaterial;
-                crack.originalImpactPoint = worldImpact;
-                crack.AddMeshCollider = AddMeshCollider;
-                crack.AddRigidbody = AddRigidbody;
+                Destroy(go);
             }
-            
-            if (AddMeshCollider)
+            else
+            {
+                if (AddMeshCollider)
+                {
+                    MeshCollider col = go.AddComponent<MeshCollider>();
+                    col.sharedMesh = mesh;
+                }
+
+                if (CutWithSeperateScript)
+                {
+                    CrackCutter crack = go.AddComponent<CrackCutter>();
+                    crack.ShardMaterial = ShardMaterial;
+                    crack.originalImpactPoint = worldImpact;
+                    crack.AddMeshCollider = AddMeshCollider;
+                    crack.AddRigidbody = AddRigidbody;
+                }
+
+                createdShards.Add(go);
+            }
+        }
+
+        if (!DestroyOriginalAfterCut)
+            target.SetActive(false);
+        else
+            Destroy(target);
+
+        if (!CutWithSeperateScript)
+            SecondPass();
+    }
+
+    void SecondPass()
+    {
+        foreach (var shard in createdShards)
+        {
+            SecondPassCut(shard);
+        }
+    }
+
+    void SecondPassCut(GameObject shard)
+    {
+        MeshFilter mf = shard.GetComponent<MeshFilter>();
+        if (!mf || mf.sharedMesh == null) { Debug.Log("Target has no mesh."); return; }
+
+        //start with a duplicate of the mesh
+        Mesh start = DuplicateMesh(mf.sharedMesh);
+        List<Mesh> pieces = new List<Mesh> { start };
+
+        Vector3 impactWorld = shard.transform.TransformPoint(impactPoint);
+        GenerateBisectingPlanes(nrOfRings, shard.transform, impactWorld);
+
+        foreach (var plane in bisectingPlanes)
+        {
+            //plane position
+            Vector3 nW = plane.normal.normalized;
+            Vector3 pW = -plane.distance * plane.normal;
+
+            //convert to local
+            Vector3 nL = shard.transform.InverseTransformDirection(nW).normalized;
+            Vector3 pL = shard.transform.InverseTransformPoint(pW);
+
+            List<Mesh> next = new List<Mesh>(pieces.Count + 4);
+            foreach (Mesh m in pieces)
+            {
+                if (!m) continue;
+
+                Mesh[] slice = MeshSlicer.SliceMesh(m, pL, nL);
+                if (slice != null && slice.Length == 2)
+                {
+                    next.Add(slice[0]);
+                    next.Add(slice[1]);
+                    Destroy(m);
+                }
+                else
+                {
+                    next.Add(m);
+                }
+            }
+            pieces = next;
+        }
+
+        //spawn shards
+        Transform parent = shard.transform.parent;
+        Material mat = ShardMaterial;
+
+        foreach (var mesh in pieces)
+        {
+            GameObject go = new GameObject("Shard1");
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = target.transform.localPosition;
+            go.transform.localRotation = target.transform.localRotation;
+            go.layer = LayerMask.NameToLayer("Glass");
+
+            MeshFilter shardMF = go.AddComponent<MeshFilter>(); shardMF.sharedMesh = mesh;
+            MeshRenderer shardMR = go.AddComponent<MeshRenderer>(); shardMR.sharedMaterial = mat;
+
+            float area = CheckArea(go);
+            bool areaBigEnough = area >= 1f ? true : false; //maybe despawn these after a while TODO
+            if (area < minAreaThreshold)
+            {
+                Destroy(go);
+                continue;
+            }
+
+            if (AddMeshCollider && areaBigEnough)
             {
                 MeshCollider col = go.AddComponent<MeshCollider>();
                 col.sharedMesh = mesh;
@@ -200,28 +266,22 @@ public class Cookiecutter : MonoBehaviour
                 if (AddPhysics)
                 {
                     Vector3 centerWorld = go.transform.TransformPoint(mesh.bounds.center);
-                    Vector3 dir = (centerWorld - target.transform.position).normalized;
+                    Vector3 dir = (centerWorld - go.transform.position).normalized;
                     rb.AddForce(dir * Random.Range(ImpulseMin, ImpulseMax), ForceMode.Impulse);
                 }
             }
-
-            if (CheckArea(go) < minAreaThreshold)
-                Destroy(go);
-
-            createdShards.Add(go);
         }
 
         if (!DestroyOriginalAfterCut)
-            target.SetActive(false);
+            shard.SetActive(false);
         else
-            Destroy(target);
+            Destroy(shard);
     }
 
     void GenerateCuttingPlanes(int nrOfCuts, Transform tf, Vector3 impact)
     {
         planeObjects.Clear();
 
-        MeshFilter mf = tf.GetComponent<MeshFilter>();
         Vector3 impactWorld = tf.TransformPoint(impact);
 
         Vector3 n = tf.up.normalized;
@@ -232,29 +292,36 @@ public class Cookiecutter : MonoBehaviour
         for (int i = 0; i < nrOfCuts; i++)
         {
             float theta = i * (Mathf.PI / nrOfCuts);//angle
-            Vector3 radial = Mathf.Cos(theta) * t1 + Mathf.Sin(theta) * t2;
+            float randomOffset = Random.Range(-offset, offset);
+            float a = theta + randomOffset;
+            Vector3 radial = Mathf.Cos(a) * t1 + Mathf.Sin(a) * t2;
 
             planeObjects.Add(new Plane(radial.normalized, impactWorld));
         }
     }
 
-    void GenerateRadialCuttingPlane(Transform tf, Vector3 impact, float r)
+    void GenerateBisectingPlanes(int rings, Transform tf, Vector3 impact)
     {
-        // radialCuttingPlanes.Clear();
+        bisectingPlanes.Clear();
+        MeshFilter mf = tf.GetComponent<MeshFilter>();
 
-        // MeshFilter mf = tf.GetComponent<MeshFilter>();
-        // Vector3 impactWorld = tf.TransformPoint(impact);
-        // Vector3 n = tf.up.normalized;
-        // Vector3 centerWorld = tf.TransformPoint(mf.sharedMesh.bounds.center);
-        // Vector3 v = centerWorld - impactWorld;
-        // Vector3 vPane = v - Vector3.Dot(v, n) * n;
-        // Vector3 u = vPane.normalized;
-        // Vector3 p = impactWorld + r * u;
+        Vector3 iw = impact;
+        Vector3 pNormal = tf.up.normalized;
+        Plane pane = new Plane(pNormal, iw);
 
-        // Vector3 normal = u;
+        // seedPoints = SeedGenerator.GenerateSeeds2D(rings, mf.sharedMesh.bounds);
+        seedPoints = SeedGenerator.GenerateSeeds2DAlongMiddle(rings, mf.sharedMesh.bounds);
 
-        // angledCutter = new Plane(normal, p);
-        Debug.Log("this does nothing atm");
+        foreach (var seed in seedPoints)
+        {
+            var lb = mf.sharedMesh.bounds;
+            Vector3 sl = new Vector3(seed.x, lb.center.y, seed.y);
+            Vector3 sw = tf.TransformPoint(sl);
+            sw = pane.ClosestPointOnPlane(sw);
+
+            Plane pb = PerpBisectorPlane(iw, sw, pNormal);
+            bisectingPlanes.Add(pb);
+        }
     }
 
     //helpers
@@ -285,6 +352,15 @@ public class Cookiecutter : MonoBehaviour
         Vector3 size = b.size;
         float areaEstimate = 2f * (size.x * size.y + size.y * size.z + size.z * size.x);
         return areaEstimate;
+    }
+
+    static Plane PerpBisectorPlane(Vector3 A, Vector3 B, Vector3 paneNormal)
+    {
+        Vector3 n = B - A;
+        n -= Vector3.Dot(n, paneNormal) * paneNormal;
+        n.Normalize();
+        Vector3 m = (A + B) * 0.5f;
+        return new Plane(n, m);
     }
 
     void OnDrawGizmosSelected()
